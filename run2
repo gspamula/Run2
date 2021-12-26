@@ -1,0 +1,276 @@
+#!/usr/bin/env micropython
+#!/usr/bin/env micropython
+from time import time, sleep
+import os
+import logging
+import threading     
+from ev3dev2.motor import (OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, MoveSteering,
+                         MoveTank, SpeedPercent, follow_for_ms, MediumMotor, LargeMotor)
+from ev3dev2.sensor import INPUT_1, INPUT_2, INPUT_3, INPUT_4
+from ev3dev2.sensor.lego import GyroSensor, ColorSensor
+from ev3dev2.sound import Sound
+from ev3dev2.button import Button
+
+
+s = Sound()
+robot = MoveTank(OUTPUT_B, OUTPUT_C)
+robot.STOP_ACTION_COAST = 'coast'
+gyro = GyroSensor(INPUT_3)
+robot.gyro=gyro
+mm_horizontal = MediumMotor(OUTPUT_D)
+mm_vertical = MediumMotor(OUTPUT_A)
+left_motor = LargeMotor(OUTPUT_B)
+right_motor = LargeMotor(OUTPUT_C)
+left_light = ColorSensor(INPUT_4)
+right_light = ColorSensor(INPUT_1)
+left_motor.reset()
+right_motor.reset()
+
+def follow_until_black(tank, left_motor, right_motor, light):
+    light_intensity = (light.reflected_light_intensity)
+    if light_intensity <= 13:
+        return False
+    else:
+        return True
+def follow_until_white(tank, left_motor, right_motor, light):
+    light_intensity = (light.reflected_light_intensity)
+    if light_intensity >= 85:
+        return False
+    else:
+        return True
+# This function is applicable for both pivot and in place turns
+def left_pivot_gyro_turn(left_speed, right_speed, target_angle, robot, gyro):
+    logfile = logging.getLogger('')
+    CurGyro = gyro.angle
+    logfile.info('gyro = ' + str(CurGyro))
+    robot.on(left_speed, right_speed)
+    while CurGyro >= target_angle:
+        CurGyro = gyro.angle
+        logfile.info('gyro = ' + str(CurGyro))
+    robot.stop()
+# This function is applicable for both pivot and in place turns
+def right_pivot_gyro_turn(left_speed, right_speed, target_angle, robot, gyro):
+    logfile = logging.getLogger('')
+    CurGyro = gyro.angle
+    logfile.info('gyro = ' + str(CurGyro))
+    robot.on(left_speed, right_speed)
+    while CurGyro <= target_angle:
+        CurGyro = gyro.angle
+        logfile.info('gyro = ' + str(CurGyro))
+    robot.stop()
+def my_follow_for_degrees(tank, TargetDegrees, left_motor, right_motor):
+    MeasuredAverageDegrees = (left_motor.position + right_motor.position)/2
+    if TargetDegrees >= 0:
+        if MeasuredAverageDegrees >= TargetDegrees:
+            return False
+        else:
+            return True
+    else:
+        if MeasuredAverageDegrees <= TargetDegrees:
+            return False
+        else:
+            return
+def left_pivot_gyro_turn(left_speed, right_speed, target_angle, robot, gyro):
+    CurGyro = gyro.angle
+    robot.on(left_speed, right_speed)
+    while CurGyro >= target_angle:
+        CurGyro = gyro.angle
+    robot.stop()
+# This function is applicable for both pivot and in place turns
+def right_pivot_gyro_turn(left_speed, right_speed, target_angle, robot, gyro):
+    CurGyro = gyro.angle
+    robot.on(left_speed, right_speed)
+    while CurGyro <= target_angle:
+        CurGyro = gyro.angle
+    robot.stop()
+def right_pivot_gyro_turn_backward(left_speed, right_speed, target_angle, robot, gyro):
+    CurGyro = gyro.angle
+    robot.on(left_speed, right_speed)
+    while CurGyro >= target_angle:
+        CurGyro = gyro.angle
+    robot.stop()
+
+def run_for_motor_stalled(motor, seconds, speed):
+    motor.on(speed)
+    motor.wait_until_not_moving(timeout=seconds)
+    motor.stop()
+
+run_for_motor_stalled(mm_horizontal, 7000, 30)
+run_for_motor_stalled(mm_vertical, 7000, -30)
+mm_vertical.reset() 
+mm_vertical.on_for_degrees(50, 390, brake=True, block=True)
+sleep(.250)
+#mm_horizontal.reset()
+s.beep()
+
+#Launching from base to catch the line follower line to green cube drop
+left_motor.reset()
+right_motor.reset()
+robot.on_for_degrees(20, 20, 350, brake=False, block=True)
+
+#Follow for 900 degrees because at the turning the light sensor may read black or white during turnings
+robot.cs = right_light
+robot.follow_line(-2,0,0,15, target_light_intensity=56,
+            follow_left_edge=False,
+            off_line_count_max=500,
+            sleep_time=0.01,
+            follow_for=my_follow_for_degrees, TargetDegrees=900,
+            left_motor = left_motor, right_motor = right_motor) 
+
+#Now that there are no turnings, we can use white as an exit condition
+robot.cs = right_light
+robot.follow_line(-0.0625,0,0,15, target_light_intensity=56,
+            follow_left_edge=False,
+            off_line_count_max=500,
+            sleep_time=0.01,
+            follow_for=follow_until_white,
+            left_motor = left_motor, right_motor = right_motor,
+            light = left_light)
+
+#reset the gyro because all turns are in relation to this spot
+gyro.reset()
+#Move forward about 200 degrees to place green cube in the green circle
+robot.on_for_degrees(15, 15, 150, brake=True, block=True)
+#Lift the vertical rack up 700 degrees so the long lance is above the green cube
+mm_vertical.reset()
+mm_vertical.on_for_degrees(50, 300, brake=True, block=False)
+#Pivot turn around right wheel to the right 30 degrees to engage with the switch engine
+right_pivot_gyro_turn(15, 0, 30, robot, gyro)
+#robot.on_for_degrees(-5, -5, 15, brake=True, block=False)
+#going more front to align with switch engine
+robot.on_for_degrees(15, 15, 250, brake=True, block=False)
+#Move horizontal motor away from the long lance so that long lance lifts up the switch engine
+mm_vertical.on_for_degrees(50, 900, brake=True, block=True)
+mm_horizontal(35, 275, brake=True, block=True)
+
+
+
+
+
+
+
+
+'''
+def do_run2():
+    logfile = logging.getLogger('') #iniatilizes the logging object
+    # an example: logfile.info('pit stop time between part 1 and part 2 - '+ str(round(part2_start_time-part1_endtime,0))+'secs')
+    logfile.info('the gyros degrees are' )
+    #running for motor stall until zero and moving up 300 so it isn't "table mowings"  
+    run_for_motor_stalled(mm_vertical, 7000, -20)
+    mm_vertical.reset() 
+    mm_vertical.on_for_degrees(50, 390, brake=True, block=False)
+    sleep(.250)
+    run_for_motor_stalled(mm_horizontal, 7000, 20)
+    mm_horizontal.reset()
+    s.beep()
+    #Launching from base to catch the line follower line to cargo plane
+    left_motor.reset()
+    right_motor.reset()
+    robot.on_for_degrees(20, 20, 300, brake=False, block=True)
+    
+
+    #Note: We have to write the code for motor stall all the way down and then lift up 300 and then reset as 0
+    #Unload Cargo plane - Step 1; vertical motor moves all the way up so the plate can align with
+    #the lever and move it halfway down
+    robot.cs = right_light
+    robot.follow_line(-2,0,0,15, target_light_intensity=56,
+                follow_left_edge=False,
+                off_line_count_max=500,
+                sleep_time=0.01,
+                follow_for=my_follow_for_degrees, TargetDegrees=900,
+                left_motor = left_motor, right_motor = right_motor)
+    
+
+    mm_vertical.reset()
+    mm_vertical.on_for_degrees(50, 1850, brake=True, block=False)
+
+    robot.cs = right_light
+    robot.follow_line(-1,0,0,15, target_light_intensity=56,
+                follow_left_edge=False,
+                off_line_count_max=500,
+                sleep_time=0.01,
+                follow_for=follow_until_white,
+                left_motor = left_motor, right_motor = right_motor,
+                light = left_light)
+    
+    gyro.reset()
+    sleep(0.5)
+    start_time=time()
+    gyro_back_speed = -15
+    target_gyro_back = -85
+    #pivoting to align to unload cargo plane (front of the robot)
+    right_pivot_gyro_turn_backward(gyro_back_speed, 0, target_gyro_back, robot, gyro)
+    stop_time = time()  
+    turn_time = (stop_time - start_time) 
+    logfile.info('gyro backward turn speed = ' + str(gyro_back_speed) + ' it took ' + str(turn_time) + ', accuracy of gyro angle = ' + str(target_gyro_back-gyro.angle) )
+    left_motor.reset()
+    right_motor.reset()
+    #previous gyro turn doesn't get exactly to unload cargo plane so we go a little forward
+    robot.on_for_degrees(17, 17, 210, brake=True, block=True)
+
+    #Pull the unload cargo plane lever vertically down halfway
+    mm_vertical.on_for_degrees(70, -1500, brake=True, block=True)
+    mm_vertical.on_for_degrees(50, 100, brake=True, block=True)
+    robot.on_for_degrees(-40, -40, 205, brake=True, block=True)
+    
+    #pivoting back to the white line
+    #right_pivot_gyro_turn(5, 0, 0, robot, gyro)
+    
+    #Turning right to align to switch engine from the end of the line following line
+    # save time here by making it go faster
+    mm_vertical.on_for_degrees(-30, 300, brake=True, block=False)
+    right_pivot_gyro_turn(8, 0, 20, robot, gyro)
+
+    #robot.stop()
+    #Going forward to switch engine
+    left_motor.reset()
+    right_motor.reset()
+    robot.on_for_degrees(15, 15, 255, brake=True, block=True)
+    
+    #switched switch engine
+    mm_vertical.reset()
+    mm_vertical.on_for_degrees(70, 1600, brake=True, block=True)
+    #Coming back to the white line facing the unload cargo plane
+
+    robot.on_for_degrees(-15, -16, 345, brake=True, block=True)
+
+    #unloading green cube in green circle
+    #IMPROVEMENT; maybe stop a little behind the black line so that the green cube always falls within the circle
+    mm_horizontal.reset()
+    mm_horizontal.on_for_degrees(75, -150, brake=True, block=True)
+    sleep(1)
+
+    robot.on_for_degrees(10, 10, 90, brake=True, block=True)
+
+    #IMPROVEMENT; both horizontal and vertical motions should be threaded along with the following gyro turn to save time
+    mm_horizontal.on_for_degrees(75, 140, brake=True, block=False)
+    mm_vertical.on_for_degrees(75, 400, brake=True, block=True)
+    
+    #aligning to unload cargo plane mission
+    # save time here by making it go faster
+    right_pivot_gyro_turn_backward(-8, 0, -69, robot, gyro)
+    #go forward towards unload cargo
+    robot.on_for_degrees(15, 15, 50, brake=True, block=True)
+    #pulling unload cargo plane all the way down
+    mm_vertical.on_for_degrees(-70, 2700, brake=True, block=True)
+
+    #come back up from unload cargo to avoid scraping the mat
+    mm_vertical.on_for_degrees(90, 500, brake=True, block=True)
+    
+    #Robot reverses away from the cargo plane so that the cube doesn't get locked betwen the robot and the mission
+    robot.on_for_degrees(15, 15, -60, brake=True, block=True)
+    
+    #pivoting left to put the gray cube from the unload cargo plane into the black circle
+    # save time here by going faster
+    left_pivot_gyro_turn(0, 10, -117, robot, gyro) #first point is here
+    
+    #Turn the rack to the right so the hook cubed lifts up and doesn't push the gray cube
+    mm_horizontal.on_for_degrees(50, -140, brake=True, block=True)
+    
+    #pivoting back - 3 point turn; first point is above
+    right_pivot_gyro_turn_backward(-15, 0, -160, robot, gyro)
+    left_pivot_gyro_turn(0, 10, -180, robot, gyro)
+    
+    #coming back to base
+    robot.on_for_degrees(100, 100, 1200, brake=True, block=True)  
+'''
